@@ -27,6 +27,9 @@ mkdir -p "$TARGET_CONFIG_DIR"
 mkdir -p "$TARGET_MCP_DIR"
 
 echo "› [4/5] Menyalin source code custom MCP (token-saver)..."
+if [ -f "$SCRIPT_DIR/AGENTS.md" ]; then
+  cp "$SCRIPT_DIR/AGENTS.md" "$HOME/AGENTS.md"
+fi
 cp -r "$SCRIPT_DIR/lightweight-tools/server.js" "$TARGET_MCP_DIR/"
 cp -r "$SCRIPT_DIR/lightweight-tools/package.json" "$TARGET_MCP_DIR/"
 if [ -f "$SCRIPT_DIR/lightweight-tools/package-lock.json" ]; then
