@@ -12,7 +12,8 @@ const server = new McpServer({
   version: "2.0.0"
 });
 
-const DEFAULT_WORKSPACE = process.env.MCP_WORKSPACE || (process.cwd() !== "/data/data/com.termux/files/home" && process.cwd() !== "/" ? process.cwd() : "/data/data/com.termux/files/home/Joy");
+const HOME_DIR = process.env.HOME || "/data/data/com.termux/files/home";
+const DEFAULT_WORKSPACE = process.env.MCP_WORKSPACE || (process.cwd() !== HOME_DIR && process.cwd() !== "/" ? process.cwd() : `${HOME_DIR}/Joy`);
 const DEFAULT_DB_FILE = ".codebase_graph.db";
 
 // SQLite Helpers
