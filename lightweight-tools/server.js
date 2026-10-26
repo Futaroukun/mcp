@@ -13,7 +13,16 @@ const server = new McpServer({
 });
 
 const HOME_DIR = process.env.HOME || "/data/data/com.termux/files/home";
-const DEFAULT_WORKSPACE = process.env.MCP_WORKSPACE || (process.cwd() !== HOME_DIR && process.cwd() !== "/" ? process.cwd() : `${HOME_DIR}/Joy`);
+
+function getFallbackWorkspace() {
+  if (process.env.MCP_WORKSPACE) return process.env.MCP_WORKSPACE;
+  const cwd = process.cwd();
+  if (cwd && cwd !== "/" && cwd !== HOME_DIR) return cwd;
+  return `${HOME_DIR}/Joy`;
+}
+
+const DEFAULT_WORKSPACE = getFallbackWorkspace();
+
 const DEFAULT_DB_FILE = ".codebase_graph.db";
 
 // SQLite Helpers
@@ -43,7 +52,7 @@ function runSqlJson(dbPath, sql) {
 
 function resolveDbPath(customPath) {
   if (!customPath) {
-    return path.join(DEFAULT_WORKSPACE, DEFAULT_DB_FILE);
+    return path.join(getFallbackWorkspace(), DEFAULT_DB_FILE);
   }
   const resolved = path.resolve(customPath);
   if (resolved.endsWith(".db")) {
@@ -53,7 +62,7 @@ function resolveDbPath(customPath) {
 }
 
 function resolveRootDir(customPath) {
-  if (!customPath) return DEFAULT_WORKSPACE;
+  if (!customPath) return getFallbackWorkspace();
   const resolved = path.resolve(customPath);
   if (resolved.endsWith(".db")) {
     return path.dirname(resolved);
@@ -1378,6 +1387,95 @@ server.tool(
   },
   async ({ url, selector, mode = "markdown", max_chars = 15000 }) => {
     return scrapeUrl({ url, selector, mode, max_chars });
+  }
+);
+
+server.tool(
+  "api_request",
+  "Send HTTP requests (GET, POST, PUT, PATCH, DELETE) to test REST APIs, endpoints, or webhooks with custom headers and body.",
+  {
+    url: z.string().url().describe("Target URL endpoint"),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]).optional().default("GET").describe("HTTP method (default GET)"),
+    headers: z.record(z.string()).optional().describe("Optional key-value map of HTTP headers"),
+    params: z.record(z.any()).optional().describe("Optional URL query parameters"),
+    body: z.union([z.record(z.any()), z.string()]).optional().describe("Request payload (JSON object or string)"),
+    timeout_ms: z.number().optional().default(15000).describe("Request timeout in milliseconds (default 15000)"),
+    max_chars: z.number().optional().default(15000).describe("Maximum character length of the response body to return (default 15000)")
+  },
+  async ({ url, method = "GET", headers = {}, params, body, timeout_ms = 15000, max_chars = 15000 }) => {
+    const startTime = Date.now();
+    try {
+      const targetUrl = new URL(url);
+      if (params) {
+        for (const [k, v] of Object.entries(params)) {
+          if (v !== undefined && v !== null) {
+            targetUrl.searchParams.set(k, String(v));
+          }
+        }
+      }
+
+      const reqHeaders = { ...headers };
+      let reqBody = undefined;
+
+      if (body !== undefined && !["GET", "HEAD"].includes(method.toUpperCase())) {
+        if (typeof body === "object") {
+          if (!Object.keys(reqHeaders).some(h => h.toLowerCase() === "content-type")) {
+            reqHeaders["Content-Type"] = "application/json";
+          }
+          reqBody = JSON.stringify(body);
+        } else {
+          reqBody = String(body);
+        }
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout_ms);
+
+      const res = await fetch(targetUrl.toString(), {
+        method: method.toUpperCase(),
+        headers: reqHeaders,
+        body: reqBody,
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+
+      const elapsed = Date.now() - startTime;
+      const contentType = res.headers.get("content-type") || "";
+      const rawText = await res.text();
+
+      let formattedBody = rawText;
+      if (contentType.includes("application/json")) {
+        try {
+          const parsed = JSON.parse(rawText);
+          formattedBody = JSON.stringify(parsed, null, 2);
+        } catch {}
+      }
+
+      const isTruncated = formattedBody.length > max_chars;
+      const displayBody = isTruncated ? formattedBody.slice(0, max_chars) + `\n\n... [Truncated: ${formattedBody.length - max_chars} chars remaining]` : formattedBody;
+
+      const headerSummary = ["content-type", "content-length", "x-ratelimit-remaining", "server"]
+        .map(h => res.headers.get(h) ? `${h}: ${res.headers.get(h)}` : null)
+        .filter(Boolean)
+        .join("\n");
+
+      const output = [
+        `### HTTP ${res.status} ${res.statusText} (${elapsed}ms)`,
+        `**URL:** ${targetUrl.toString()}`,
+        headerSummary ? `**Headers:**\n\`\`\`\n${headerSummary}\n\`\`\`` : "",
+        `**Body:**\n\`\`\`json\n${displayBody}\n\`\`\``
+      ].filter(Boolean).join("\n\n");
+
+      return {
+        content: [{ type: "text", text: output }]
+      };
+    } catch (err) {
+      const elapsed = Date.now() - startTime;
+      return {
+        content: [{ type: "text", text: `HTTP Request Failed (${elapsed}ms): ${err.message}` }],
+        isError: true
+      };
+    }
   }
 );
 
