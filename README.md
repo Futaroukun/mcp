@@ -31,20 +31,34 @@ mcp/
     └── package.json            # Dependensi lokal (SDK, Cheerio, Zod)
 ```
 
-### 1. `token-saver` (Custom Local Server)
-Engine utilitas performa tinggi hemat token:
+### 1. `token-saver` (Custom Local Server v2.5.0)
+Engine utilitas performa tinggi hemat token dengan 31 tools modular:
 
 | Kategori | Tool | Deskripsi |
 | :--- | :--- | :--- |
-| **Code Graph** | `index_repository` | Membangun graph dependensi & index simbol proyek ke database SQLite. |
+| **Code Graph & AST** | `index_repository` / `codebase_index` | Membangun graph dependensi & index simbol proyek (JS/TS, Python, Go, Rust, Java, Kotlin, Dart, C/C++, Swift, SQL). |
 | | `code_outline` | Ekstraksi AST cepat (daftar fungsi/class/export + baris kode) hemat 90%+ token. |
 | | `search_graph` | Mencari simbol, modul, atau rute spesifik di database graph. |
-| | `trace_call_path` | Melacak alur pemanggilan fungsi antar-file. |
-| | `detect_changes` | Deteksi perubahan file aktif terhadap codebase graph. |
+| | `get_code_snippet` | Mengambil cuplikan kode presisi sekitar fungsi/baris tanpa memuat seluruh file. |
+| | `trace_path` / `trace_call_path` | Melacak alur pemanggilan fungsi antar-file (inbound callers / outbound dependencies). |
+| | `detect_changes` / `code_blast_radius` | Analisis dampak perubahan file/git diff terhadap modul yang bergantung. |
+| | `get_architecture` | Ringkasan arsitektur tingkat tinggi (entry points, dependency hubs, statistik modul). |
+| | `manage_adr` | Dokumentasi Architecture Decision Records (ADR) persisten. |
+| **Ultra-Fast Search** | `fast_search` | Pencarian kode super cepat via native `ripgrep` (`rg`) dengan context lines & limitasi token. |
+| **Git Operations** | `git_status` | Status working tree ringkas (staged, unstaged, untracked) tanpa overhead bash. |
+| | `git_diff` | Inspeksi diff perubahan (staged/unstaged/commit) dengan guard pemotongan token. |
+| | `git_log` | Riwayat commit git terformat compact. |
+| | `git_show` | Detail commit atau inspeksi file pada commit hash tertentu. |
+| | `git_commit` | Buat commit git langsung melalui interface MCP. |
 | **Database** | `sqlite_query` | Eksekusi SQL query langsung ke file `.db` dengan format JSON ringkas. |
 | | `sqlite_schema` | Mengambil skema tabel dan relasi kolom database secara instan. |
-| **Web & API** | `web_reader` / `scrape_web` | Fetch halaman web dan ekstraksi markdown/JSON menggunakan selector CSS. |
+| **Web & GitHub** | `web_reader` / `scrape_web` | Fetch halaman web dan ekstraksi markdown/JSON menggunakan selector CSS. |
 | | `api_request` | HTTP client lengkap (GET, POST, PUT, DELETE, JSON body, custom headers). |
+| | `github_search` | Cari repository publik GitHub via REST API tanpa git clone. |
+| | `github_raw_file` | Ambil file langsung dari GitHub (`raw.githubusercontent.com`). |
+| **Context & Utilities** | `json_query` | Query dot-path (`data.items[0]`, `keys`, `length`) pada payload JSON masif. |
+| | `get_current_time` | Timestamp ISO 8601, timezone lokal, dan epoch ms real-time. |
+| | `system_status` | Metrik kesehatan sistem Termux (RAM, disk usage, uptime, Node version). |
 
 ### 2. `memory` (`@modelcontextprotocol/server-memory`)
 Memori jangka panjang berbasis knowledge graph:

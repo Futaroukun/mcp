@@ -9,7 +9,7 @@ import * as cheerio from "cheerio";
 const serverName = process.env.MCP_SERVER_NAME || process.argv[2] || "token-saver";
 const server = new McpServer({
   name: serverName,
-  version: "2.0.0"
+  version: "2.5.0"
 });
 
 const HOME_DIR = process.env.HOME || "/data/data/com.termux/files/home";
@@ -163,7 +163,7 @@ async function handleIndexRepository({ path: targetPath, force = false }) {
     ".gemini", "temp", "tmp", "logs", "media", "sessions", "session", "auth_info_baileys"
   ]);
 
-  const validExts = new Set([".js", ".mjs", ".cjs", ".ts", ".tsx", ".py", ".sh", ".bash", ".json", ".go", ".rs", ".php"]);
+  const validExts = new Set([".js", ".mjs", ".cjs", ".ts", ".tsx", ".py", ".sh", ".bash", ".json", ".go", ".rs", ".php", ".java", ".kt", ".dart", ".c", ".cpp", ".h", ".hpp", ".swift", ".sql"]);
 
   const fileEntries = [];
   async function walk(dir) {
@@ -231,6 +231,12 @@ async function handleIndexRepository({ path: targetPath, force = false }) {
     else if (f.ext === ".rs") lang = "rust";
     else if (f.ext === ".php") lang = "php";
     else if (f.ext === ".ts" || f.ext === ".tsx") lang = "typescript";
+    else if (f.ext === ".java") lang = "java";
+    else if (f.ext === ".kt") lang = "kotlin";
+    else if (f.ext === ".dart") lang = "dart";
+    else if (f.ext === ".c" || f.ext === ".cpp" || f.ext === ".h" || f.ext === ".hpp") lang = "c_cpp";
+    else if (f.ext === ".swift") lang = "swift";
+    else if (f.ext === ".sql") lang = "sql";
     const safeRel = f.rel_path.replace(/'/g, "''");
     const safeAbs = f.abs_path.replace(/'/g, "''");
 
@@ -280,6 +286,34 @@ async function handleIndexRepository({ path: targetPath, force = false }) {
           symName = mPhp[1] || mPhp[2] || mPhp[3];
           symKind = mPhp[2] ? "class" : (mPhp[3] ? "interface" : "function");
         }
+      } else if (lang === "java") {
+        const mJava = trimmed.match(/^(?:public|protected|private|static|final|abstract|\s+)*(?:class|interface|enum|record)\s+([A-Za-z0-9_]+)/);
+        const mJavaMethod = trimmed.match(/^(?:public|protected|private|static|final|synchronized|\s+)*[A-Za-z0-9_<>\[\]]+\s+([A-Za-z0-9_]+)\s*\([^)]*\)\s*\{?/);
+        if (mJava) { symName = mJava[1]; symKind = "class"; }
+        else if (mJavaMethod && !["if", "for", "while", "switch"].includes(mJavaMethod[1])) { symName = mJavaMethod[1]; symKind = "method"; }
+      } else if (lang === "kotlin") {
+        const mKtFun = trimmed.match(/^(?:(?:public|private|protected|internal|suspend|override)\s+)*fun\s+([A-Za-z0-9_]+)\s*\(/);
+        const mKtClass = trimmed.match(/^(?:(?:public|private|protected|internal|data|sealed|open|abstract)\s+)*(?:class|interface|object)\s+([A-Za-z0-9_]+)/);
+        if (mKtFun) { symName = mKtFun[1]; symKind = "function"; }
+        else if (mKtClass) { symName = mKtClass[1]; symKind = "class"; }
+      } else if (lang === "dart") {
+        const mDartClass = trimmed.match(/^(?:abstract\s+)?class\s+([A-Za-z0-9_]+)/);
+        const mDartFn = trimmed.match(/^(?:(?:void|Future|int|double|String|bool|[A-Z][A-Za-z0-9_<>]*)\s+)?([A-Za-z0-9_]+)\s*\([^)]*\)\s*\{/);
+        if (mDartClass) { symName = mDartClass[1]; symKind = "class"; }
+        else if (mDartFn && !["if", "for", "while", "switch", "catch"].includes(mDartFn[1])) { symName = mDartFn[1]; symKind = "function"; }
+      } else if (lang === "c_cpp") {
+        const mCppClass = trimmed.match(/^(?:class|struct)\s+([A-Za-z0-9_]+)/);
+        const mCppFn = trimmed.match(/^(?:[A-Za-z0-9_&*:<>]+\s+)+([A-Za-z0-9_]+)\s*\([^)]*\)\s*\{?/);
+        if (mCppClass) { symName = mCppClass[1]; symKind = "class"; }
+        else if (mCppFn && !["if", "for", "while", "switch", "catch", "return"].includes(mCppFn[1])) { symName = mCppFn[1]; symKind = "function"; }
+      } else if (lang === "swift") {
+        const mSwiftFn = trimmed.match(/^(?:(?:public|private|fileprivate|internal|override)\s+)*func\s+([A-Za-z0-9_]+)/);
+        const mSwiftType = trimmed.match(/^(?:(?:public|private|fileprivate|internal)\s+)*(?:class|struct|enum|protocol)\s+([A-Za-z0-9_]+)/);
+        if (mSwiftFn) { symName = mSwiftFn[1]; symKind = "function"; }
+        else if (mSwiftType) { symName = mSwiftType[1]; symKind = "type"; }
+      } else if (lang === "sql") {
+        const mSql = trimmed.match(/^CREATE\s+(?:OR\s+REPLACE\s+)?(TABLE|VIEW|INDEX|PROCEDURE|FUNCTION|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z0-9_"`]+)/i);
+        if (mSql) { symName = mSql[2].replace(/["`]/g, ""); symKind = mSql[1].toLowerCase(); }
       } else if (lang === "javascript" || lang === "typescript") {
         const mFunc = trimmed.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z0-9_]+)?\s*\(/);
         const mClass = trimmed.match(/^(?:export\s+)?(?:abstract\s+)?class\s+([A-Za-z0-9_]+)/);
@@ -315,6 +349,15 @@ async function handleIndexRepository({ path: targetPath, force = false }) {
       } else if (lang === "python") {
         const mPyImp = trimmed.match(/(?:from\s+([A-Za-z0-9_.]+)\s+import|import\s+([A-Za-z0-9_.]+))/);
         if (mPyImp) importTarget = mPyImp[1] || mPyImp[2];
+      } else if (lang === "java" || lang === "kotlin") {
+        const mImp = trimmed.match(/^import\s+([A-Za-z0-9_.]+)/);
+        if (mImp) importTarget = mImp[1];
+      } else if (lang === "dart") {
+        const mDartImp = trimmed.match(/^import\s+['"]([^'"]+)['"]/);
+        if (mDartImp) importTarget = mDartImp[1];
+      } else if (lang === "c_cpp") {
+        const mInc = trimmed.match(/^#include\s+[<"]([^>"]+)[>"]/);
+        if (mInc) importTarget = mInc[1];
       }
 
       if (importTarget) {
@@ -1074,6 +1117,46 @@ function extractOutline(content, ext) {
       if (/^(?:(?:public|protected|private|static|final|abstract)\s+)*(?:function\s+([A-Za-z0-9_]+)|class\s+([A-Za-z0-9_]+)|trait\s+([A-Za-z0-9_]+)|interface\s+([A-Za-z0-9_]+))/.test(trimmed)) {
         symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
       }
+    } else if (normalizedExt === ".java") {
+      if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) return;
+      if (/^(?:public|protected|private|static|final|abstract|\s+)*(?:class|interface|enum|record)\s+([A-Za-z0-9_]+)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      } else if (/^(?:public|protected|private|static|final|synchronized|\s+)*[A-Za-z0-9_<>\[\]]+\s+([A-Za-z0-9_]+)\s*\([^)]*\)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      }
+    } else if (normalizedExt === ".kt") {
+      if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) return;
+      if (/^(?:(?:public|private|protected|internal|data|sealed|open|abstract)\s+)*(?:class|interface|object)\s+([A-Za-z0-9_]+)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      } else if (/^(?:(?:public|private|protected|internal|suspend|override)\s+)*fun\s+([A-Za-z0-9_]+)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      }
+    } else if (normalizedExt === ".dart") {
+      if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) return;
+      if (/^(?:abstract\s+)?class\s+([A-Za-z0-9_]+)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      } else if (/^(?:(?:void|Future|int|double|String|bool|[A-Z][A-Za-z0-9_<>]*)\s+)?[A-Za-z0-9_]+\s*\([^)]*\)\s*\{/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      }
+    } else if ([".c", ".cpp", ".cc", ".cxx", ".h", ".hpp"].includes(normalizedExt)) {
+      if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) return;
+      if (/^(?:class|struct)\s+([A-Za-z0-9_]+)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      } else if (/^(?:[A-Za-z0-9_&*:<>]+\s+)+[A-Za-z0-9_]+\s*\([^)]*\)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      }
+    } else if (normalizedExt === ".swift") {
+      if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) return;
+      if (/^(?:(?:public|private|fileprivate|internal)\s+)*(?:class|struct|enum|protocol)\s+([A-Za-z0-9_]+)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      } else if (/^(?:(?:public|private|fileprivate|internal|override)\s+)*func\s+([A-Za-z0-9_]+)/.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/\{.*$/, "").trim()}`);
+      }
+    } else if (normalizedExt === ".sql") {
+      if (trimmed.startsWith("--") || trimmed.startsWith("/*")) return;
+      if (/^CREATE\s+(?:OR\s+REPLACE\s+)?(TABLE|VIEW|INDEX|PROCEDURE|FUNCTION|TRIGGER)\s+/i.test(trimmed)) {
+        symbols.push(`L${lineNum}: ${trimmed.replace(/;.*$/, "").trim()}`);
+      }
     } else if (normalizedExt === ".json") {
       const m = line.match(/^\s*"([^"]+)"\s*:\s*([{\[]|[^\n,]+)/);
       if (m && !line.startsWith("    ")) {
@@ -1479,6 +1562,399 @@ server.tool(
   }
 );
 
+
+// ---------------------------------------------------------------------------
+// 12. FAST_SEARCH (Powered by Ripgrep)
+// ---------------------------------------------------------------------------
+server.tool(
+  "fast_search",
+  "Ultra-fast regex or keyword search across codebase using ripgrep (rg). Returns matching file paths, line numbers, and snippets without reading full files into context.",
+  {
+    pattern: z.string().describe("Search keyword or regex pattern"),
+    path: z.string().optional().describe(`Target directory to search. Defaults to ${DEFAULT_WORKSPACE}`),
+    file_type: z.string().optional().describe("Filter by file extension or type (e.g. 'js', 'ts', 'py', 'json')"),
+    case_sensitive: z.boolean().optional().describe("Case sensitive search (default false)"),
+    context_lines: z.number().optional().describe("Number of context lines before/after match (default 1)"),
+    max_results: z.number().optional().describe("Max match lines to return (default 35)")
+  },
+  async ({ pattern, path: targetPath, file_type, case_sensitive = false, context_lines = 1, max_results = 35 }) => {
+    const rootDir = resolveRootDir(targetPath);
+    const args = ["-n", "--color=never", "--heading", "-C", String(context_lines)];
+    if (!case_sensitive) args.push("-i");
+    if (file_type) args.push("-g", `*.${file_type.replace(/^\./, "")}`);
+    args.push("-e", pattern);
+    args.push(rootDir);
+
+    return new Promise((resolve) => {
+      execFile("rg", args, { maxBuffer: 1024 * 1024 * 5 }, (err, stdout, stderr) => {
+        if (err && err.code !== 1) {
+          return resolve({ content: [{ type: "text", text: `Search Error: ${stderr || err.message}` }], isError: true });
+        }
+        const trimmed = stdout.trim();
+        if (!trimmed) {
+          return resolve({ content: [{ type: "text", text: `No matches found for \`${pattern}\` in \`${rootDir}\`.` }] });
+        }
+        const lines = trimmed.split("\n");
+        let truncated = false;
+        let resultLines = lines;
+        if (lines.length > max_results * (context_lines * 2 + 1)) {
+          resultLines = lines.slice(0, max_results * (context_lines * 2 + 1));
+          truncated = true;
+        }
+        let output = `### Ripgrep Search: \`${pattern}\`\n\`\`\`\n${resultLines.join("\n")}\n\`\`\``;
+        if (truncated) {
+          output += `\n\n*(Truncated: showing first ${resultLines.length} output lines of ${lines.length})*`;
+        }
+        resolve({ content: [{ type: "text", text: output }] });
+      });
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// 13. GIT SUITE (Status, Diff, Log, Show, Commit)
+// ---------------------------------------------------------------------------
+server.tool(
+  "git_status",
+  "Get the working tree status of a git repository (staged, unstaged, untracked files). Saves tokens compared to full bash commands.",
+  {
+    repo_path: z.string().optional().describe(`Target git repository path. Defaults to ${DEFAULT_WORKSPACE}`)
+  },
+  async ({ repo_path }) => {
+    const rootDir = resolveRootDir(repo_path);
+    return new Promise((resolve) => {
+      execFile("git", ["status", "--short", "--branch"], { cwd: rootDir }, (err, stdout, stderr) => {
+        if (err) return resolve({ content: [{ type: "text", text: `Git Error: ${stderr || err.message}` }], isError: true });
+        const trimmed = stdout.trim();
+        if (!trimmed) {
+          return resolve({ content: [{ type: "text", text: "Working tree clean. No uncommitted changes." }] });
+        }
+        resolve({ content: [{ type: "text", text: `### Git Status: \`${path.basename(rootDir)}\`\n\`\`\`\n${trimmed}\n\`\`\`` }] });
+      });
+    });
+  }
+);
+
+server.tool(
+  "git_diff",
+  "View git diff for staged changes, unstaged changes, or between commits with token truncation protection.",
+  {
+    staged: z.boolean().optional().describe("View staged changes only (--cached)"),
+    target: z.string().optional().describe("Specific commit, branch, or file to diff"),
+    max_chars: z.number().optional().describe("Max output characters (default 12000)"),
+    repo_path: z.string().optional().describe(`Target git repository path. Defaults to ${DEFAULT_WORKSPACE}`)
+  },
+  async ({ staged = false, target, max_chars = 12000, repo_path }) => {
+    const rootDir = resolveRootDir(repo_path);
+    const args = ["diff"];
+    if (staged) args.push("--cached");
+    if (target) args.push(target);
+
+    return new Promise((resolve) => {
+      execFile("git", args, { cwd: rootDir, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
+        if (err) return resolve({ content: [{ type: "text", text: `Git Diff Error: ${stderr || err.message}` }], isError: true });
+        let diff = stdout.trim();
+        if (!diff) {
+          return resolve({ content: [{ type: "text", text: staged ? "No staged changes." : "No unstaged changes." }] });
+        }
+        if (diff.length > max_chars) {
+          diff = diff.slice(0, max_chars) + `\n\n...[Diff truncated: ${diff.length - max_chars} characters omitted]`;
+        }
+        resolve({ content: [{ type: "text", text: `### Git Diff (${staged ? "Staged" : "Working Tree"})\n\`\`\`diff\n${diff}\n\`\`\`` }] });
+      });
+    });
+  }
+);
+
+server.tool(
+  "git_log",
+  "Show compact git commit history (hash, author, date, message).",
+  {
+    count: z.number().optional().describe("Number of commits to return (default 10)"),
+    repo_path: z.string().optional().describe(`Target git repository path. Defaults to ${DEFAULT_WORKSPACE}`)
+  },
+  async ({ count = 10, repo_path }) => {
+    const rootDir = resolveRootDir(repo_path);
+    const args = ["log", `-${count}`, "--pretty=format:%h | %an | %ar | %s"];
+
+    return new Promise((resolve) => {
+      execFile("git", args, { cwd: rootDir }, (err, stdout, stderr) => {
+        if (err) return resolve({ content: [{ type: "text", text: `Git Log Error: ${stderr || err.message}` }], isError: true });
+        const trimmed = stdout.trim();
+        resolve({ content: [{ type: "text", text: `### Recent Git Commits (${path.basename(rootDir)})\n\`\`\`\n${trimmed || "No commits found."}\n\`\`\`` }] });
+      });
+    });
+  }
+);
+
+server.tool(
+  "git_show",
+  "Show commit details or inspect a file at a specific revision.",
+  {
+    revision: z.string().describe("Commit hash or reference (e.g. HEAD, HEAD~1, commit hash)"),
+    file_path: z.string().optional().describe("Optional file path to inspect at revision"),
+    max_chars: z.number().optional().describe("Max output characters (default 12000)"),
+    repo_path: z.string().optional().describe(`Target git repository path. Defaults to ${DEFAULT_WORKSPACE}`)
+  },
+  async ({ revision, file_path, max_chars = 12000, repo_path }) => {
+    const rootDir = resolveRootDir(repo_path);
+    const args = ["show"];
+    if (file_path) {
+      args.push(`${revision}:${file_path}`);
+    } else {
+      args.push(revision);
+    }
+
+    return new Promise((resolve) => {
+      execFile("git", args, { cwd: rootDir, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
+        if (err) return resolve({ content: [{ type: "text", text: `Git Show Error: ${stderr || err.message}` }], isError: true });
+        let out = stdout.trim();
+        if (out.length > max_chars) {
+          out = out.slice(0, max_chars) + `\n\n...[Output truncated: ${out.length - max_chars} characters omitted]`;
+        }
+        resolve({ content: [{ type: "text", text: `### Git Show \`${revision}${file_path ? `:${file_path}` : ""}\`\n\`\`\`\n${out}\n\`\`\`` }] });
+      });
+    });
+  }
+);
+
+server.tool(
+  "git_commit",
+  "Record changes to the repository with a commit message.",
+  {
+    message: z.string().describe("Commit message"),
+    stage_all: z.boolean().optional().describe("Stage all modified tracked files before committing (-a)"),
+    repo_path: z.string().optional().describe(`Target git repository path. Defaults to ${DEFAULT_WORKSPACE}`)
+  },
+  async ({ message, stage_all = false, repo_path }) => {
+    const rootDir = resolveRootDir(repo_path);
+    const args = ["commit", "-m", message];
+    if (stage_all) args.unshift("-a");
+
+    return new Promise((resolve) => {
+      execFile("git", args, { cwd: rootDir }, (err, stdout, stderr) => {
+        if (err) return resolve({ content: [{ type: "text", text: `Commit Error: ${stderr || err.message}` }], isError: true });
+        resolve({ content: [{ type: "text", text: `### Commit Succeeded\n\`\`\`\n${stdout.trim()}\n\`\`\`` }] });
+      });
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// 14. TIME & SYSTEM ENVIRONMENT CONTEXT
+// ---------------------------------------------------------------------------
+server.tool(
+  "get_current_time",
+  "Get current ISO timestamp, local time, timezone, and epoch milliseconds to avoid temporal hallucination.",
+  {},
+  async () => {
+    const now = new Date();
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const offsetMin = -now.getTimezoneOffset();
+    const offsetSign = offsetMin >= 0 ? "+" : "-";
+    const offsetHours = String(Math.floor(Math.abs(offsetMin) / 60)).padStart(2, "0");
+    const offsetMins = String(Math.abs(offsetMin) % 60).padStart(2, "0");
+    const formattedOffset = `UTC${offsetSign}${offsetHours}:${offsetMins}`;
+
+    const text = `### Current System Time\n` +
+                 `• **ISO 8601**: \`${now.toISOString()}\`\n` +
+                 `• **Local String**: \`${now.toLocaleString()}\`\n` +
+                 `• **Timezone**: \`${tz}\` (${formattedOffset})\n` +
+                 `• **Epoch (ms)**: \`${now.getTime()}\``;
+
+    return { content: [{ type: "text", text }] };
+  }
+);
+
+server.tool(
+  "system_status",
+  "Get system health metrics: Termux/OS disk usage, memory usage, load average, uptime, and Node.js runtime details.",
+  {},
+  async () => {
+    const os = await import("node:os");
+    const uptimeSec = Math.floor(os.uptime());
+    const hours = Math.floor(uptimeSec / 3600);
+    const mins = Math.floor((uptimeSec % 3600) / 60);
+
+    const totalMemMb = (os.totalmem() / (1024 * 1024)).toFixed(0);
+    const freeMemMb = (os.freemem() / (1024 * 1024)).toFixed(0);
+    const usedMemMb = (Number(totalMemMb) - Number(freeMemMb)).toFixed(0);
+
+    let diskInfo = "N/A";
+    try {
+      diskInfo = await new Promise((res) => {
+        execFile("df", ["-h", "/data/data/com.termux/files/home"], (err, stdout) => {
+          if (err) return res("N/A");
+          res(stdout.trim());
+        });
+      });
+    } catch {}
+
+    const text = `### System Status & Environment\n` +
+                 `• **Platform**: \`${os.platform()} (${os.arch()})\`\n` +
+                 `• **Uptime**: ${hours}h ${mins}m\n` +
+                 `• **RAM**: ${usedMemMb} MB used / ${totalMemMb} MB total (${freeMemMb} MB free)\n` +
+                 `• **Node Version**: \`${process.version}\`\n` +
+                 `• **Disk Usage**:\n\`\`\`\n${diskInfo}\n\`\`\``;
+
+    return { content: [{ type: "text", text }] };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// 15. GITHUB LIVE INSPECTOR (Without cloning)
+// ---------------------------------------------------------------------------
+server.tool(
+  "github_search",
+  "Search GitHub public repositories by query, sort by stars or updated, and retrieve metadata without git clone.",
+  {
+    query: z.string().describe("Search query, e.g. 'mcp-server language:javascript'"),
+    sort: z.enum(["stars", "forks", "updated"]).optional().describe("Sort criteria (default stars)"),
+    limit: z.number().optional().describe("Number of repositories to return (default 5, max 15)")
+  },
+  async ({ query, sort = "stars", limit = 5 }) => {
+    try {
+      const q = encodeURIComponent(query);
+      const url = `https://api.github.com/search/repositories?q=${q}&sort=${sort}&order=desc&per_page=${Math.min(limit, 15)}`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Antigravity-MCP/2.5",
+          "Accept": "application/vnd.github.v3+json"
+        },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!res.ok) {
+        return { content: [{ type: "text", text: `GitHub API error: HTTP ${res.status} ${res.statusText}` }], isError: true };
+      }
+      const data = await res.json();
+      const items = (data.items || []).map((repo) => ({
+        full_name: repo.full_name,
+        stars: repo.stargazers_count,
+        forks: repo.forks_count,
+        description: repo.description,
+        language: repo.language,
+        url: repo.html_url,
+        updated_at: repo.updated_at
+      }));
+
+      let out = `### GitHub Repositories for \`${query}\` (${items.length} results)\n\n`;
+      for (const item of items) {
+        out += `• **[${item.full_name}](${item.url})** (★ ${item.stars} | 🍴 ${item.forks} | ${item.language || "Unknown"})\n` +
+               `  ${item.description || "No description provided."}\n`;
+      }
+      return { content: [{ type: "text", text: out.trim() }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: `GitHub Search failed: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "github_raw_file",
+  "Fetch raw content of a file from any public GitHub repository directly without cloning.",
+  {
+    owner: z.string().describe("Repository owner/organization"),
+    repo: z.string().describe("Repository name"),
+    path: z.string().describe("File path inside the repo (e.g. 'README.md' or 'src/index.ts')"),
+    branch: z.string().optional().describe("Branch name or commit hash (default 'main')"),
+    max_chars: z.number().optional().describe("Maximum character length (default 15000)")
+  },
+  async ({ owner, repo, path: filePath, branch = "main", max_chars = 15000 }) => {
+    try {
+      const cleanPath = filePath.replace(/^\/+/, "");
+      let rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${cleanPath}`;
+      let res = await fetch(rawUrl, {
+        headers: { "User-Agent": "Antigravity-MCP/2.5" },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (res.status === 404 && branch === "main") {
+        rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/master/${cleanPath}`;
+        res = await fetch(rawUrl, {
+          headers: { "User-Agent": "Antigravity-MCP/2.5" },
+          signal: AbortSignal.timeout(15000)
+        });
+      }
+      if (!res.ok) {
+        return { content: [{ type: "text", text: `Failed to fetch file from GitHub: HTTP ${res.status} ${res.statusText} (${rawUrl})` }], isError: true };
+      }
+      let content = await res.text();
+      const ext = path.extname(cleanPath).slice(1) || "txt";
+      if (content.length > max_chars) {
+        content = content.slice(0, max_chars) + `\n\n...[Truncated: ${content.length - max_chars} characters omitted]`;
+      }
+      return {
+        content: [{
+          type: "text",
+          text: `### File \`${cleanPath}\` from \`${owner}/${repo}\`\n\`\`\`${ext}\n${content}\n\`\`\``
+        }]
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: `GitHub Fetch Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// 16. JSON_QUERY (Lightweight Path Filtering for Large JSON)
+// ---------------------------------------------------------------------------
+server.tool(
+  "json_query",
+  "Query, filter, or slice large JSON objects or JSON files using dot-path syntax (e.g. 'users[0].name', 'keys', 'length') without loading entire payload into LLM context.",
+  {
+    json_data: z.string().optional().describe("Raw JSON string to query"),
+    file_path: z.string().optional().describe("Path to local JSON file"),
+    path: z.string().describe("Dot-path query, e.g. 'users[0].name', 'keys', 'length', or '*' for all items"),
+    max_chars: z.number().optional().describe("Max output characters (default 8000)")
+  },
+  async ({ json_data, file_path, path: queryPath, max_chars = 8000 }) => {
+    try {
+      let raw = json_data;
+      if (!raw && file_path) {
+        raw = await fs.readFile(path.resolve(file_path), "utf-8");
+      }
+      if (!raw) {
+        return { content: [{ type: "text", text: "Please provide either 'json_data' or 'file_path'." }], isError: true };
+      }
+
+      const obj = JSON.parse(raw);
+
+      if (queryPath === "keys") {
+        const keys = typeof obj === "object" && obj !== null ? Object.keys(obj) : [];
+        return { content: [{ type: "text", text: JSON.stringify(keys, null, 2) }] };
+      }
+
+      if (queryPath === "length") {
+        const len = Array.isArray(obj) ? obj.length : (typeof obj === "object" && obj !== null ? Object.keys(obj).length : 0);
+        return { content: [{ type: "text", text: String(len) }] };
+      }
+
+      const parts = queryPath.replace(/\[(\w+)\]/g, ".$1").replace(/^\./, "").split(".");
+      let current = obj;
+      for (const part of parts) {
+        if (current === undefined || current === null) break;
+        if (part === "*") {
+          if (Array.isArray(current)) {
+            // keep array
+          } else if (typeof current === "object") {
+            current = Object.values(current);
+          }
+        } else {
+          current = current[part];
+        }
+      }
+
+      let resStr = JSON.stringify(current !== undefined ? current : null, null, 2);
+      if (resStr.length > max_chars) {
+        resStr = resStr.slice(0, max_chars) + `\n\n...[Truncated: ${resStr.length - max_chars} characters omitted]`;
+      }
+
+      return { content: [{ type: "text", text: resStr }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: `JSON Query Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
 const transport = new StdioServerTransport();
 
 const cleanup = async () => {
@@ -1500,5 +1976,22 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason) => {
   console.error("[MCP Error] Unhandled rejection:", reason);
 });
+
+if (process.env.DUMP_SCHEMAS) {
+  const handler = server.server._requestHandlers.get("tools/list");
+  const res = await handler({ method: "tools/list", params: {} });
+  const outDir = process.env.DUMP_SCHEMAS_DIR || "/data/data/com.termux/files/home/.gemini/antigravity-cli/mcp/token-saver";
+  for (const t of res.tools) {
+    const filePath = path.join(outDir, `${t.name}.json`);
+    const schema = {
+      name: t.name,
+      description: t.description,
+      parameters: t.inputSchema
+    };
+    await fs.writeFile(filePath, JSON.stringify(schema));
+    console.log(`Generated schema: ${t.name}.json`);
+  }
+  process.exit(0);
+}
 
 await server.connect(transport);

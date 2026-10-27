@@ -5,18 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_CONFIG_DIR="$HOME/.gemini/config"
 TARGET_MCP_DIR="$HOME/.gemini/mcp-servers/lightweight-tools"
 
-echo "› [1/5] Memeriksa dependensi sistem (sqlite3)..."
-if ! command -v sqlite3 >/dev/null 2>&1; then
-  echo "  sqlite3 belum terpasang. Mencoba menginstall..."
+echo "› [1/5] Memeriksa dependensi sistem (sqlite3, ripgrep, git)..."
+if ! command -v sqlite3 >/dev/null 2>&1 || ! command -v rg >/dev/null 2>&1; then
+  echo "  Memasang dependensi sistem tambahan..."
   if command -v pkg >/dev/null 2>&1; then
-    pkg install -y sqlite
+    pkg install -y sqlite ripgrep git
   elif command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update && sudo apt-get install -y sqlite3
+    sudo apt-get update && sudo apt-get install -y sqlite3 ripgrep git
   else
-    echo "⚠️ Peringatan: sqlite3 tidak ditemukan. Harap install sqlite3 secara manual."
+    echo "⚠️ Peringatan: Harap install sqlite3 dan ripgrep secara manual."
   fi
 else
-  echo "  ✓ sqlite3 sudah terpasang."
+  echo "  ✓ Dependensi sistem (sqlite3, ripgrep, git) siap."
 fi
 
 echo "› [2/5] Menginstall paket MCP global via npm..."
@@ -39,6 +39,11 @@ fi
 echo "  Menginstall dependensi local lightweight-tools..."
 cd "$TARGET_MCP_DIR"
 npm install --omit=dev
+
+echo "  Menyinkronkan skema tool MCP untuk Antigravity CLI..."
+SCHEMA_DIR="$HOME/.gemini/antigravity-cli/mcp/token-saver"
+mkdir -p "$SCHEMA_DIR"
+DUMP_SCHEMAS=1 DUMP_SCHEMAS_DIR="$SCHEMA_DIR" node server.js >/dev/null 2>&1 || true
 
 echo "› [5/5] Membuat konfigurasi mcp_config.json..."
 GLOBAL_PREFIX="$(npm root -g)"
